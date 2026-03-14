@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import io
 import logging
+import sys
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -28,6 +31,17 @@ class ExecutorActionResult:
     error: str | None = None
 
 
+@contextmanager
+def _suppress_stdout():
+    """抑制 stdout 输出（用于屏蔽 Open-AutoGLM 的 print）"""
+    old_stdout = sys.stdout
+    sys.stdout = io.StringIO()
+    try:
+        yield
+    finally:
+        sys.stdout = old_stdout
+
+
 class TestExecutor:
     """
     测试执行器：复用 Open-AutoGLM 的组件，自己管理对话上下文。
@@ -51,6 +65,7 @@ class TestExecutor:
         self.device_id = device_id
         self.system_prompt = get_system_prompt(lang)
         self.max_steps = max_steps_per_action
+        self._verbose = logger.isEnabledFor(logging.DEBUG)
 
         # 自管理上下文（整个 TestCase 共享）
         self._context: list[dict[str, Any]] = []
@@ -69,6 +84,7 @@ class TestExecutor:
         """
         device_factory = get_device_factory()
         actions_taken: list[dict] = []
+        verbose = self._verbose
 
         # 初始化 system prompt（仅首次）
         if not self._context:
@@ -89,9 +105,14 @@ class TestExecutor:
         )
 
         for round_num in range(self.max_steps):
-            # 调用 AutoGLM
+            # verbose: 打印请求概要
+            if verbose:
+                self._log_request(round_num + 1)
+
+            # 调用 AutoGLM（抑制其 print 输出）
             try:
-                response: ModelResponse = self.model_client.request(self._context)
+                with _suppress_stdout():
+                    response: ModelResponse = self.model_client.request(self._context)
             except Exception as e:
                 logger.error("模型调用失败: %s", e)
                 return ExecutorActionResult(
@@ -101,16 +122,14 @@ class TestExecutor:
                     error=f"Model error: {e}",
                 )
 
-            logger.debug(
-                "[Round %d] thinking=%s, action=%s",
-                round_num + 1,
-                response.thinking[:80],
-                response.action[:80],
-            )
+            # verbose: 打印响应
+            if verbose:
+                self._log_response(round_num + 1, response)
 
-            # 解析动作
+            # 解析动作（抑制 parse_action 的 print）
             try:
-                action = parse_action(response.action)
+                with _suppress_stdout():
+                    action = parse_action(response.action)
             except ValueError:
                 action = {"_metadata": "finish", "message": response.action}
 
@@ -177,6 +196,41 @@ class TestExecutor:
             error="max_steps exceeded",
         )
 
+    def _log_request(self, round_num: int):
+        """打印本轮发送给模型的消息概要"""
+        print(f"\n    {'─' * 50}")
+        print(f"    📤 请求 (Round {round_num})")
+        print(f"    {'─' * 50}")
+
+        # 只打印最后一条 user 消息（当前轮的输入）
+        for msg in reversed(self._context):
+            if msg.get("role") == "user":
+                content = msg.get("content", "")
+                if isinstance(content, list):
+                    texts = [c.get("text", "") for c in content if c.get("type") == "text"]
+                    img_count = sum(1 for c in content if c.get("type") == "image_url")
+                    print(f"    指令: {' '.join(texts)}")
+                    if img_count:
+                        print(f"    截图: {img_count} 张")
+                else:
+                    print(f"    指令: {content}")
+                break
+
+        print(f"    上下文消息数: {len(self._context)}")
+
+    @staticmethod
+    def _log_response(round_num: int, response: ModelResponse):
+        """打印模型返回的响应"""
+        print(f"\n    📥 响应 (Round {round_num})")
+        print(f"    {'─' * 50}")
+        # thinking 截断显示
+        thinking = response.thinking.strip()
+        if len(thinking) > 200:
+            thinking = thinking[:200] + "..."
+        print(f"    思考: {thinking}")
+        print(f"    动作: {response.action}")
+        print(f"    {'─' * 50}")
+
     def handle_unexpected(
         self,
         instruction: str = "关闭当前弹窗或广告",
@@ -196,4 +250,5 @@ class TestExecutor:
     def reset(self):
         """重置上下文（切换 TestCase 时调用）"""
         self._context = []
+        self._verbose = logger.isEnabledFor(logging.DEBUG)
         logger.debug("Executor 上下文已重置")

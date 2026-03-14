@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import subprocess
 import time
 
 from phone_agent.device_factory import get_device_factory
@@ -47,6 +48,10 @@ class TestRunner:
 
         cases: list[TestCaseResult] = []
         for i, test_case in enumerate(suite.test_cases, 1):
+            # 多用例时，在每个用例开始前清理环境
+            if i > 1:
+                self._cleanup_device()
+
             print(f"── 用例 {i}/{len(suite.test_cases)}: {test_case.name} ──\n")
             result = self.run_case(test_case)
             cases.append(result)
@@ -141,6 +146,28 @@ class TestRunner:
             detail=result,
         )
 
+    def _cleanup_device(self):
+        """用例间清理：回桌面 + 关闭所有后台 App"""
+        device_id = self.executor.action_handler.device_id
+        adb_prefix = ["adb"]
+        if device_id:
+            adb_prefix += ["-s", device_id]
+
+        print("  [清理] 回到桌面，关闭后台 App ... ", end="", flush=True)
+        try:
+            subprocess.run(
+                adb_prefix + ["shell", "input", "keyevent", "KEYCODE_HOME"],
+                capture_output=True, timeout=5,
+            )
+            subprocess.run(
+                adb_prefix + ["shell", "am", "kill-all"],
+                capture_output=True, timeout=5,
+            )
+            print("OK")
+        except Exception as e:
+            print(f"WARN ({e})")
+            logger.warning("设备清理失败: %s", e)
+
     @staticmethod
     def _print_case_summary(result: TestCaseResult):
         icon = "✅" if result.status == "passed" else "❌"
@@ -152,6 +179,27 @@ class TestRunner:
         print(f"{'='*60}")
         print(f"  测试结果: {result.passed}/{result.total} passed, "
               f"{result.failed} failed, {result.duration_ms/1000:.1f}s")
-        icon = "✅" if result.failed == 0 else "❌"
-        print(f"  {icon} {result.suite_name}")
+
+        # 列出失败详情
+        for case in result.cases:
+            if case.status == "failed":
+                print(f"\n  ❌ {case.case_name}:")
+                for i, step_result in enumerate(case.steps, 1):
+                    if not step_result.success:
+                        step = step_result.step
+                        if isinstance(step, AssertStep):
+                            reason = ""
+                            if hasattr(step_result.detail, "reason"):
+                                reason = f" — {step_result.detail.reason}"
+                            print(f"     Step {i} [断言失败] {step.expectation}{reason}")
+                        elif isinstance(step, ActionStep):
+                            error = ""
+                            if hasattr(step_result.detail, "error") and step_result.detail.error:
+                                error = f" — {step_result.detail.error}"
+                            print(f"     Step {i} [操作失败] {step.description}{error}")
+
+        if result.failed == 0:
+            print(f"\n  ✅ {result.suite_name}")
+        else:
+            print(f"\n  ❌ {result.suite_name}")
         print(f"{'='*60}\n")

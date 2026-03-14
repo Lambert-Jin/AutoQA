@@ -29,3 +29,10 @@ tasks:
         severity: critical
 #        retryOnFail: true
 #        retryCleanup: "关闭弹窗或广告"
+  - name: 用例2-搜索功能
+    flow:
+      - action: "打开今日头条 App"
+        timeout: 15
+      - action: "点击搜索框"
+      - action: "输入关键词'科技'"
+      - assert: "页面显示搜索结果列表"

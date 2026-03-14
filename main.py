@@ -56,8 +56,8 @@ def _setup_logging(verbose: bool):
         datefmt="%H:%M:%S",
     )
     level = logging.DEBUG if verbose else logging.INFO
-    logging.getLogger("auto_qa").setLevel(level)
-    logging.getLogger("planner").setLevel(level)
+    for module in ("auto_qa", "executor", "runner", "asserter", "planner", "screenshot", "config"):
+        logging.getLogger(module).setLevel(level)
     logging.getLogger("phone_agent").setLevel(
         logging.INFO if verbose else logging.WARNING
     )
