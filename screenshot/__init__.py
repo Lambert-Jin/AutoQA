@@ -1,0 +1,1 @@
+from screenshot.manager import ScreenshotManager

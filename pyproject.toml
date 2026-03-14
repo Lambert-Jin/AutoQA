@@ -1,0 +1,19 @@
+[project]
+name = "auto-qa"
+version = "0.1.0"
+description = "基于 AutoGLM + VLM 的移动端自动化测试框架"
+requires-python = ">=3.10"
+dependencies = [
+    "openai>=1.0",
+    "google-genai>=1.0",
+    "pyyaml>=6.0",
+    "phone-agent @ git+https://github.com/zai-org/Open-AutoGLM.git",
+]
+
+[tool.setuptools.packages.find]
+include = ["asserter*", "config*", "executor*", "planner*", "screenshot*"]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
