@@ -25,7 +25,7 @@ class VLMConfig:
     provider: str = "gemini"        # "qwen" | "gemini"
     base_url: str = ""              # Qwen 需要，Gemini 不需要
     api_key: str = "${GEMINI_API_KEY}"
-    model: str = "gemini-3-pro"
+    model: str = "gemini-3-pro-image-preview"
     temperature: float = 0.1        # 断言场景用低温度
     max_tokens: int = 1000
 
@@ -51,6 +51,20 @@ class AutoGLMConfig:
             self.api_key = _resolve_env_vars(self.api_key)
         if self.base_url:
             self.base_url = _resolve_env_vars(self.base_url)
+
+
+@dataclass
+class PlannerConfig:
+    """规划器 LLM 配置（自然语言 → 测试步骤）"""
+    provider: str = "gemini"
+    api_key: str = "${GEMINI_API_KEY}"
+    model: str = "gemini-3.1-pro-preview"
+    temperature: float = 0.3
+    max_tokens: int = 2000
+
+    def __post_init__(self):
+        if self.api_key:
+            self.api_key = _resolve_env_vars(self.api_key)
 
 
 @dataclass
