@@ -21,9 +21,4 @@ venv/
 .DS_Store
 Thumbs.db
 
-# 文档（本地保留，不推送）
-AutoQA-ARCHITECTURE.md
-AutoQA-CONTEXT.md
-学习笔记-两个项目对比.md
-开发日志.md
 docs/
