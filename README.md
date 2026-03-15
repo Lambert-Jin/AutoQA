@@ -38,13 +38,69 @@ AUTOGLM_API_KEY=your-autoglm-api-key
 export $(grep -v '^#' .env | xargs)
 ```
 
-### 3. 连接设备
+### 3. 配置 ADB（Android）
 
-确保手机通过 USB 连接并开启了 USB 调试：
+#### 安装 ADB
 
 ```bash
-adb devices   # Android
-hdc list targets   # HarmonyOS
+# macOS
+brew install android-platform-tools
+
+# Ubuntu / Debian
+sudo apt install adb
+
+# Windows
+# 下载 SDK Platform Tools：https://developer.android.com/tools/releases/platform-tools
+# 解压后将目录添加到系统 PATH
+```
+
+#### 手机端设置
+
+1. 进入 **设置 → 关于手机**，连续点击「版本号」7 次，开启开发者模式
+2. 进入 **设置 → 开发者选项**，开启：
+   - **USB 调试**
+   - **USB 调试（安全设置）**（部分手机需要，允许通过 ADB 模拟点击）
+3. 用 USB 数据线连接手机和电脑
+4. 手机上弹出「允许 USB 调试」对话框，勾选「始终允许」并确认
+
+#### 验证连接
+
+```bash
+adb devices
+```
+
+正常输出：
+
+```
+List of devices attached
+XXXXXXXX    device
+```
+
+> 如果显示 `unauthorized`，请在手机上确认 USB 调试授权弹窗。
+> 如果显示 `offline`，尝试拔插 USB 或 `adb kill-server && adb start-server`。
+
+#### 安装 ADB Keyboard（必需）
+
+AutoQA 通过 [ADB Keyboard](https://github.com/nicnocquee/AdbKeyboard) 实现中文输入，需要在手机上安装：
+
+```bash
+# 下载 APK
+wget https://github.com/nicnocquee/AdbKeyboard/releases/download/v2.0.0/AdbKeyboard.apk
+
+# 安装到手机
+adb install AdbKeyboard.apk
+```
+
+安装后在手机上启用：**设置 → 语言和输入法 → ADB Keyboard** → 开启。
+
+> 框架会在输入文字时自动切换到 ADB Keyboard，输入完成后自动恢复原始输入法。
+
+#### HarmonyOS 设备
+
+HarmonyOS 使用 HDC 工具替代 ADB：
+
+```bash
+hdc list targets   # 列出设备
 ```
 
 ## 使用方式
