@@ -5,3 +5,4 @@ from config.settings import (
     Screenshot,
     VLMConfig,
 )
+from config.loader import load_global_config

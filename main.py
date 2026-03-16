@@ -111,10 +111,10 @@ def generate_test(args):
     """模式 2：自然语言 → 生成 YAML 文件"""
     _setup_logging(args.verbose)
 
-    from config.settings import PlannerConfig
+    from config.loader import load_global_config
     from planner import plan_test_case, generate_yaml_content
 
-    planner_config = PlannerConfig()
+    _, _, _, planner_config = load_global_config()
 
     print(f"\n规划中: {args.description}\n")
 
@@ -153,20 +153,18 @@ def interactive_test(args):
     from executor.models import create_action_model
     from executor import TestExecutor
     from asserter import Asserter
-    from config.settings import ActionModelConfig, PlannerConfig, VLMConfig
+    from config.loader import load_global_config
     from planner import plan_test_case
     from runner import TestRunner
     from screenshot import ScreenshotManager
     from suite import TestSuite
 
-    # 使用默认配置（环境变量）
-    model_config = ActionModelConfig()
-    vlm_config = VLMConfig()
-    planner_config = PlannerConfig()
+    # 使用全局配置（替代硬编码默认值）
+    device_config, model_config, vlm_config, planner_config = load_global_config()
 
-    # 创建设备实例
-    device_type_str = args.device_type or "adb"
-    device = create_device(DeviceType(device_type_str), args.device_id)
+    # 创建设备实例（CLI 参数 > 全局配置）
+    device_type_str = args.device_type or device_config.device_type
+    device = create_device(DeviceType(device_type_str), args.device_id or device_config.device_id)
 
     # 创建模型适配器
     action_model = create_action_model(

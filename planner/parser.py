@@ -37,54 +37,56 @@ def parse_yaml(path: str) -> tuple[TestSuite, DeviceConfig, ActionModelConfig, V
     """
     解析 YAML 测试用例文件。
 
+    优先级：YAML > 全局配置 > 代码默认值
+
     Returns:
         (TestSuite, DeviceConfig, ActionModelConfig, VLMConfig)
     """
+    from config.loader import load_global_config
+    global_device, global_model, global_vlm, _ = load_global_config()
+
     with open(path, "r", encoding="utf-8") as f:
         raw = yaml.safe_load(f)
 
     raw = _resolve_dict(raw)
 
-    # 解析 device 配置
+    # device: YAML > 全局配置
     device_raw = raw.get("device", {})
     device_config = DeviceConfig(
-        device_type=_map_device_type(device_raw.get("type", "android")),
-        device_id=device_raw.get("id"),
+        device_type=_map_device_type(device_raw.get("type")) if device_raw.get("type") else global_device.device_type,
+        device_id=device_raw.get("id", global_device.device_id),
     )
 
-    # 解析 config
+    # config
     config_raw = raw.get("config", {})
 
+    # action_model: YAML > 全局配置
     model_raw = config_raw.get("action_model", {})
     model_config = ActionModelConfig(
-        provider=model_raw.get("provider", ActionModelConfig.provider),
-        base_url=model_raw.get("base_url", ActionModelConfig.base_url),
-        api_key=model_raw.get("api_key", ActionModelConfig.api_key),
-        model=model_raw.get("model", ActionModelConfig.model),
-        max_tokens=model_raw.get("max_tokens", ActionModelConfig.max_tokens),
-        temperature=model_raw.get("temperature", ActionModelConfig.temperature),
-        lang=model_raw.get("lang", "cn"),
-        custom_rules=model_raw.get("custom_rules", []),
+        provider=model_raw.get("provider", global_model.provider),
+        base_url=model_raw.get("base_url", global_model.base_url),
+        api_key=model_raw.get("api_key", global_model.api_key),
+        model=model_raw.get("model", global_model.model),
+        max_tokens=model_raw.get("max_tokens", global_model.max_tokens),
+        temperature=model_raw.get("temperature", global_model.temperature),
+        lang=model_raw.get("lang", global_model.lang),
+        custom_rules=model_raw.get("custom_rules", global_model.custom_rules),
     )
 
+    # vlm: YAML > 全局配置
     vlm_raw = config_raw.get("vlm", {})
     vlm_config = VLMConfig(
-        provider=vlm_raw.get("provider", VLMConfig.provider),
-        base_url=vlm_raw.get("base_url", VLMConfig.base_url),
-        api_key=vlm_raw.get("api_key", VLMConfig.api_key),
-        model=vlm_raw.get("model", VLMConfig.model),
+        provider=vlm_raw.get("provider", global_vlm.provider),
+        base_url=vlm_raw.get("base_url", global_vlm.base_url),
+        api_key=vlm_raw.get("api_key", global_vlm.api_key),
+        model=vlm_raw.get("model", global_vlm.model),
+        temperature=vlm_raw.get("temperature", global_vlm.temperature),
+        max_tokens=vlm_raw.get("max_tokens", global_vlm.max_tokens),
     )
 
-    # 解析 tasks
-    test_cases: list[TestCase] = []
-    for task_raw in raw.get("tasks", []):
-        case = _parse_test_case(task_raw)
-        test_cases.append(case)
-
-    suite = TestSuite(
-        name=raw.get("name", os.path.basename(path)),
-        test_cases=test_cases,
-    )
+    # tasks
+    test_cases = [_parse_test_case(t) for t in raw.get("tasks", [])]
+    suite = TestSuite(name=raw.get("name", os.path.basename(path)), test_cases=test_cases)
 
     return suite, device_config, model_config, vlm_config
 
