@@ -276,4 +276,15 @@ class ADBDevice:
     # ── 清理 ──
 
     def kill_all_apps(self) -> None:
-        self._cmd.run(["shell", "am", "kill-all"], timeout=5)
+        """强制停止所有第三方 app"""
+        result = self._cmd.run(["shell", "pm", "list", "packages", "-3"], timeout=10)
+        if not result.success:
+            logger.warning("获取第三方包名失败: %s", result.stderr)
+            self._cmd.run(["shell", "am", "kill-all"], timeout=5)
+            return
+
+        for line in result.stdout.splitlines():
+            if not line.startswith("package:"):
+                continue
+            pkg = line[8:]
+            self._cmd.run(["shell", "am", "force-stop", pkg], timeout=5)
