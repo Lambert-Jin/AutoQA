@@ -6,7 +6,8 @@ device:
   # id: "emulator-5554"   # 可选，不指定则自动检测
 
 config:
-  autoglm:
+  action_model:
+    provider: "autoglm"
     base_url: "${AUTOGLM_BASE_URL}"
     api_key: "${AUTOGLM_API_KEY}"
     model: "autoglm-phone"
@@ -20,19 +21,20 @@ tasks:
     flow:
       - action: "打开今日头条 App"
         timeout: 15
-
+      - action: "向下滑动"
       - action: "点击推荐页面中的第一篇文章"
-
       - action: "点击评论图标进入评论区"
 
-      - assert: "评论区顶部出现了一个红色横幅"
+      - assert: "评论区顶部出现了一个白色背景的横幅，右边有一个红色按钮上面写着去发布"
         severity: critical
 #        retryOnFail: true
 #        retryCleanup: "关闭弹窗或广告"
-  - name: 用例2-搜索功能
+  - name: 用例2-评论
     flow:
       - action: "打开今日头条 App"
         timeout: 15
-      - action: "点击搜索框"
-      - action: "输入关键词'科技'"
-      - assert: "页面显示搜索结果列表"
+      - action: "向下滑动"
+      - action: "点击推荐页面中的第一篇文章"
+      - action: "点击评论图标进入评论区"
+      - action: "写一个不少于15字的评论并发送"
+      - assert: "评论后出现了一个弹窗"

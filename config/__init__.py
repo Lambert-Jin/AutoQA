@@ -1,6 +1,6 @@
 from config.settings import (
+    ActionModelConfig,
     AssertResult,
-    AutoGLMConfig,
     DeviceConfig,
     Screenshot,
     VLMConfig,

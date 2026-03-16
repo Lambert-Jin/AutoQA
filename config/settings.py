@@ -37,14 +37,16 @@ class VLMConfig:
 
 
 @dataclass
-class AutoGLMConfig:
-    """AutoGLM 模型配置"""
+class ActionModelConfig:
+    """操作模型配置（支持多 provider）"""
+    provider: str = "autoglm"       # "autoglm" | 将来扩展 "uitars" 等
     base_url: str = "${AUTOGLM_BASE_URL}"
     api_key: str = "${AUTOGLM_API_KEY}"
     model: str = "autoglm-phone"
     max_tokens: int = 3000
     temperature: float = 0.1
     lang: str = "cn"                # "cn" | "en"
+    custom_rules: list[str] = field(default_factory=list)
 
     def __post_init__(self):
         if self.api_key:

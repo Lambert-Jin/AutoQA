@@ -7,7 +7,7 @@ import re
 
 import yaml
 
-from config.settings import AutoGLMConfig, DeviceConfig, VLMConfig
+from config.settings import ActionModelConfig, DeviceConfig, VLMConfig
 from suite import ActionStep, AssertStep, Step, TestCase, TestSuite
 
 
@@ -33,12 +33,12 @@ def _resolve_dict(data: dict) -> dict:
     return result
 
 
-def parse_yaml(path: str) -> tuple[TestSuite, DeviceConfig, AutoGLMConfig, VLMConfig]:
+def parse_yaml(path: str) -> tuple[TestSuite, DeviceConfig, ActionModelConfig, VLMConfig]:
     """
     解析 YAML 测试用例文件。
 
     Returns:
-        (TestSuite, DeviceConfig, AutoGLMConfig, VLMConfig)
+        (TestSuite, DeviceConfig, ActionModelConfig, VLMConfig)
     """
     with open(path, "r", encoding="utf-8") as f:
         raw = yaml.safe_load(f)
@@ -55,12 +55,16 @@ def parse_yaml(path: str) -> tuple[TestSuite, DeviceConfig, AutoGLMConfig, VLMCo
     # 解析 config
     config_raw = raw.get("config", {})
 
-    autoglm_raw = config_raw.get("autoglm", {})
-    autoglm_config = AutoGLMConfig(
-        base_url=autoglm_raw.get("base_url", AutoGLMConfig.base_url),
-        api_key=autoglm_raw.get("api_key", AutoGLMConfig.api_key),
-        model=autoglm_raw.get("model", AutoGLMConfig.model),
-        lang=autoglm_raw.get("lang", "cn"),
+    model_raw = config_raw.get("action_model", {})
+    model_config = ActionModelConfig(
+        provider=model_raw.get("provider", ActionModelConfig.provider),
+        base_url=model_raw.get("base_url", ActionModelConfig.base_url),
+        api_key=model_raw.get("api_key", ActionModelConfig.api_key),
+        model=model_raw.get("model", ActionModelConfig.model),
+        max_tokens=model_raw.get("max_tokens", ActionModelConfig.max_tokens),
+        temperature=model_raw.get("temperature", ActionModelConfig.temperature),
+        lang=model_raw.get("lang", "cn"),
+        custom_rules=model_raw.get("custom_rules", []),
     )
 
     vlm_raw = config_raw.get("vlm", {})
@@ -82,7 +86,7 @@ def parse_yaml(path: str) -> tuple[TestSuite, DeviceConfig, AutoGLMConfig, VLMCo
         test_cases=test_cases,
     )
 
-    return suite, device_config, autoglm_config, vlm_config
+    return suite, device_config, model_config, vlm_config
 
 
 def _parse_test_case(raw: dict) -> TestCase:
