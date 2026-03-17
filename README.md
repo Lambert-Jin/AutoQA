@@ -1,8 +1,8 @@
 # AutoQA
 
-基于 AutoGLM + VLM 的移动端自动化测试框架。
+基于 VLM 的移动端自动化测试框架。
 
-采用双模型架构：**AutoGLM** 负责手机操作（点击、滑动、输入），**VLM**（视觉语言模型）负责截图断言，实现"操作"与"验证"的分离。
+采用双模型架构：**操作模型**（如 AutoGLM）负责手机操作（点击、滑动、输入），**VLM**（视觉语言模型）负责截图断言，实现"操作"与"验证"的分离。
 
 ## 环境准备
 
@@ -12,8 +12,6 @@
 # Python >= 3.10
 pip install -e .
 ```
-
-这会自动安装所有依赖，包括 [Open-AutoGLM](https://github.com/zai-org/Open-AutoGLM)。
 
 ### 2. 配置 API Key
 
@@ -95,13 +93,102 @@ adb install AdbKeyboard.apk
 
 > 框架会在输入文字时自动切换到 ADB Keyboard，输入完成后自动恢复原始输入法。
 
-#### HarmonyOS 设备
+## 模型配置
 
-HarmonyOS 使用 HDC 工具替代 ADB：
+AutoQA 使用三个独立的模型组件，可分别配置不同的模型：
 
-```bash
-hdc list targets   # 列出设备
+| 组件 | 用途 | 支持的 Provider |
+|---|---|---|
+| **action_model** | 手机操作（点击、滑动、输入） | `autoglm` |
+| **vlm** | 截图断言（判断期望是否成立） | `gemini`、`qwen`、`openai` |
+| **planner** | 自然语言 → 测试步骤规划 | `gemini`、`qwen`、`openai` |
+
+### 全局配置（config.yaml）
+
+项目根目录的 `config.yaml` 是全局默认配置，适用于 interactive 和 generate 模式：
+
+```yaml
+config:
+  action_model:
+    provider: "autoglm"
+    base_url: "${AUTOGLM_BASE_URL}"
+    api_key: "${AUTOGLM_API_KEY}"
+    model: "autoglm-phone"
+
+  vlm:
+    provider: "gemini"
+    api_key: "${GEMINI_API_KEY}"
+    model: "gemini-2.5-flash"
+
+  planner:
+    provider: "gemini"
+    api_key: "${GEMINI_API_KEY}"
+    model: "gemini-2.5-flash"
 ```
+
+### YAML 测试用例中配置
+
+每个 YAML 测试用例可单独配置模型，覆盖全局配置：
+
+```yaml
+name: 我的测试
+config:
+  action_model:
+    provider: "autoglm"
+    base_url: "${AUTOGLM_BASE_URL}"
+    api_key: "${AUTOGLM_API_KEY}"
+    model: "autoglm-phone"
+  vlm:
+    provider: "qwen"
+    base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    api_key: "${QWEN_API_KEY}"
+    model: "qwen-vl-max"
+tasks:
+  - name: ...
+```
+
+### 配置优先级
+
+```
+YAML 测试用例 > config.yaml 全局配置 > 代码默认值
+```
+
+### 切换模型示例
+
+**VLM 断言从 Gemini 切换到 Qwen：**
+
+```yaml
+vlm:
+  provider: "qwen"
+  base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+  api_key: "${QWEN_API_KEY}"
+  model: "qwen-vl-max"
+```
+
+**Planner 从 Gemini 切换到 OpenAI：**
+
+```yaml
+planner:
+  provider: "openai"
+  base_url: "https://api.openai.com/v1"
+  api_key: "${OPENAI_API_KEY}"
+  model: "gpt-4o"
+```
+
+### 通用配置字段
+
+所有模型组件支持以下字段：
+
+| 字段 | 说明 | 默认值 |
+|---|---|---|
+| `provider` | 模型提供商 | 组件各异 |
+| `base_url` | API 地址（OpenAI 兼容 provider 需要） | `""` |
+| `api_key` | API 密钥，支持 `${ENV_VAR}` 语法 | — |
+| `model` | 模型名称 | 组件各异 |
+| `temperature` | 生成温度 | 0.1 ~ 0.3 |
+| `max_tokens` | 最大输出 token 数 | 1000 ~ 3000 |
+
+> `api_key` 和 `base_url` 支持 `${ENV_VAR}` 环境变量语法，避免在文件中硬编码密钥。
 
 ## 使用方式
 
@@ -124,9 +211,11 @@ device:
   type: android
 
 config:
-  autoglm:
+  action_model:
+    provider: "autoglm"
     base_url: "${AUTOGLM_BASE_URL}"
     api_key: "${AUTOGLM_API_KEY}"
+    model: "autoglm-phone"
   vlm:
     provider: "gemini"
     api_key: "${GEMINI_API_KEY}"
@@ -183,9 +272,9 @@ python main.py interactive --device-type adb
 ## CLI 参数
 
 ```
-python main.py run <yaml_path> [--device-type adb|hdc|ios] [--device-id ID] [-v]
+python main.py run <yaml_path> [--device-type adb] [--device-id ID] [-v]
 python main.py generate <description> [-o OUTPUT] [--device-type android|harmony|ios] [-v]
-python main.py interactive [--device-type adb|hdc|ios] [--device-id ID] [-v]
+python main.py interactive [--device-type adb] [--device-id ID] [-v]
 ```
 
 | 参数 | 说明 |
@@ -199,11 +288,13 @@ python main.py interactive [--device-type adb|hdc|ios] [--device-id ID] [-v]
 
 ```
 ├── main.py              # CLI 入口
-├── config/              # 配置数据类（VLM、AutoGLM、Planner、Device）
-├── planner/             # YAML 解析 + LLM 规划器
-├── executor/            # AutoGLM 执行器
-├── asserter/            # VLM 视觉断言
+├── config.yaml          # 全局默认配置
+├── config/              # 配置数据类 + 配置加载器
 ├── providers/           # 统一模型 Provider 层（Gemini / OpenAI 兼容）
+├── planner/             # YAML 解析 + LLM 规划器
+├── executor/            # 操作执行器 + 模型适配层
+├── asserter/            # VLM 视觉断言
+├── device/              # 设备抽象层（ADB）
 ├── screenshot/          # 截图管理
 ├── runner.py            # 测试编排与容错重试
 ├── suite.py             # 数据模型（TestCase、TestSuite 等）
