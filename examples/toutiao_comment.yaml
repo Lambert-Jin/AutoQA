@@ -21,7 +21,7 @@ tasks:
     flow:
       - action: "打开今日头条 App"
         timeout: 15
-      - action: "向下滑动"
+      - action: "向上滑动"
       - action: "点击推荐页面中的第一篇文章"
       - action: "点击评论图标进入评论区"
 
@@ -33,7 +33,7 @@ tasks:
     flow:
       - action: "打开今日头条 App"
         timeout: 15
-      - action: "向下滑动"
+      - action: "向上滑动"
       - action: "点击推荐页面中的第一篇文章"
       - action: "点击评论图标进入评论区"
       - action: "写一个不少于15字的评论并发送"

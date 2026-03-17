@@ -105,6 +105,7 @@ def load_global_config(
     pl = config_raw.get("planner", {})
     planner_config = PlannerConfig(
         provider=pl.get("provider", "gemini"),
+        base_url=pl.get("base_url", ""),
         api_key=pl.get("api_key", "${GEMINI_API_KEY}"),
         model=pl.get("model", "gemini-3.1-pro-preview"),
         temperature=pl.get("temperature", 0.3),

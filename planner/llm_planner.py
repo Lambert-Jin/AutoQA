@@ -46,7 +46,8 @@ def generate_yaml_content(
         "name": suite_name,
         "device": {"type": device_type},
         "config": {
-            "autoglm": {
+            "action_model": {
+                "provider": "autoglm",
                 "base_url": "${AUTOGLM_BASE_URL}",
                 "api_key": "${AUTOGLM_API_KEY}",
                 "model": "autoglm-phone",
@@ -86,48 +87,19 @@ def _test_case_to_dict(case: TestCase) -> dict:
 
 
 def _call_llm(system_prompt: str, user_prompt: str, config: PlannerConfig) -> str:
-    """调用 LLM 进行文本生成（不需要图片）"""
-    if config.provider == "gemini":
-        return _call_gemini(system_prompt, user_prompt, config)
-    elif config.provider == "qwen":
-        return _call_qwen(system_prompt, user_prompt, config)
-    else:
-        raise ValueError(f"Unsupported provider for planner: {config.provider}")
+    """通过统一 Provider 层调用 LLM"""
+    from providers import create_provider
 
-
-def _call_gemini(system_prompt: str, user_prompt: str, config: PlannerConfig) -> str:
-    """通过 Google GenAI SDK 调用 Gemini"""
-    from google import genai
-    from google.genai import types
-
-    client = genai.Client(api_key=config.api_key)
-    response = client.models.generate_content(
+    provider = create_provider(
+        provider=config.provider,
+        api_key=config.api_key,
         model=config.model,
-        contents=user_prompt,
-        config=types.GenerateContentConfig(
-            system_instruction=system_prompt,
-            temperature=config.temperature,
-            max_output_tokens=config.max_tokens,
-        ),
-    )
-    return response.text
-
-
-def _call_qwen(system_prompt: str, user_prompt: str, config: PlannerConfig) -> str:
-    """通过 OpenAI 兼容 API 调用 Qwen"""
-    from openai import OpenAI
-
-    client = OpenAI(base_url=config.base_url, api_key=config.api_key)
-    response = client.chat.completions.create(
-        model=config.model,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
+        base_url=config.base_url,
         temperature=config.temperature,
         max_tokens=config.max_tokens,
     )
-    return response.choices[0].message.content
+    messages = [{"role": "user", "content": user_prompt}]
+    return provider.chat(messages, system_prompt=system_prompt)
 
 
 def _parse_plan_response(response: str) -> TestCase:

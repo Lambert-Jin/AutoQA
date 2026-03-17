@@ -203,7 +203,7 @@ python main.py interactive [--device-type adb|hdc|ios] [--device-id ID] [-v]
 ├── planner/             # YAML 解析 + LLM 规划器
 ├── executor/            # AutoGLM 执行器
 ├── asserter/            # VLM 视觉断言
-│   └── vlm_providers/   # Gemini / Qwen 适配
+├── providers/           # 统一模型 Provider 层（Gemini / OpenAI 兼容）
 ├── screenshot/          # 截图管理
 ├── runner.py            # 测试编排与容错重试
 ├── suite.py             # 数据模型（TestCase、TestSuite 等）
