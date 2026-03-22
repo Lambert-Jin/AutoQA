@@ -98,6 +98,16 @@ class Screenshot:
 
 
 @dataclass
+class CacheConfig:
+    """缓存配置"""
+    enabled: bool = True
+    similarity_threshold: float = 0.85
+    region_similarity_threshold: float = 0.8
+    ttl_days: int = 30
+    db_path: str = ".cache/action_cache.db"
+
+
+@dataclass
 class AssertResult:
     """断言结果"""
     passed: bool

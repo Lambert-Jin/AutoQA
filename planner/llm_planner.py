@@ -64,12 +64,35 @@ def generate_yaml_content(
     return yaml.dump(data, allow_unicode=True, default_flow_style=False, sort_keys=False)
 
 
+def append_to_yaml(path: str, test_case: TestCase):
+    """向已有 YAML 文件追加一个 task。
+
+    Args:
+        path: 已有 YAML 文件路径
+        test_case: 要追加的 TestCase
+    """
+    with open(path, "r", encoding="utf-8") as f:
+        data = yaml.safe_load(f)
+
+    if data is None:
+        data = {}
+
+    if "tasks" not in data:
+        data["tasks"] = []
+    data["tasks"].append(_test_case_to_dict(test_case))
+
+    with open(path, "w", encoding="utf-8") as f:
+        yaml.dump(data, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
+
+
 def _test_case_to_dict(case: TestCase) -> dict:
     """将 TestCase 转为 YAML 兼容的字典"""
     flow = []
     for step in case.steps:
         if isinstance(step, ActionStep):
             item = {"action": step.description}
+            if step.cache_key:
+                item["cache_key"] = step.cache_key
             if step.timeout != 30:
                 item["timeout"] = step.timeout
         elif isinstance(step, AssertStep):
@@ -124,6 +147,7 @@ def _parse_plan_response(response: str) -> TestCase:
             steps.append(ActionStep(
                 description=item["action"],
                 timeout=item.get("timeout", 30),
+                cache_key=item.get("cache_key", ""),
             ))
         elif "assert" in item:
             steps.append(AssertStep(

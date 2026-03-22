@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 
 
@@ -19,6 +20,7 @@ def main():
     run_parser.add_argument("yaml_path", help="YAML 测试用例文件路径")
     run_parser.add_argument("--device-type", default=None, help="设备类型: adb")
     run_parser.add_argument("--device-id", default=None, help="设备 ID")
+    run_parser.add_argument("--no-cache", action="store_true", help="禁用 Action 缓存")
     run_parser.add_argument("--verbose", "-v", action="store_true", help="详细日志输出")
 
     # generate 子命令
@@ -56,7 +58,7 @@ def _setup_logging(verbose: bool):
         datefmt="%H:%M:%S",
     )
     level = logging.DEBUG if verbose else logging.INFO
-    for module in ("executor", "runner", "asserter", "planner", "screenshot", "config", "device"):
+    for module in ("executor", "runner", "asserter", "planner", "screenshot", "config", "device", "cache"):
         logging.getLogger(module).setLevel(level)
 
 
@@ -71,9 +73,13 @@ def run_test(args):
     from planner import parse_yaml
     from runner import TestRunner
     from screenshot import ScreenshotManager
+    from config.loader import load_global_config
 
     # 解析 YAML
     suite, device_config, model_config, vlm_config = parse_yaml(args.yaml_path)
+
+    # 加载全局配置（用于 cache 等）
+    _, _, _, _, cache_config = load_global_config()
 
     # CLI 参数覆盖 YAML 配置
     device_type_str = args.device_type or device_config.device_type
@@ -94,8 +100,13 @@ def run_test(args):
         custom_rules=model_config.custom_rules,
     )
 
+    # 初始化 Action 缓存
+    action_cache = None
+    if cache_config.enabled and not args.no_cache:
+        action_cache = _create_action_cache(cache_config)
+
     # 组装
-    executor = TestExecutor(model=action_model, device=device)
+    executor = TestExecutor(model=action_model, device=device, action_cache=action_cache)
     asserter = Asserter(vlm_config)
     screenshot_mgr = ScreenshotManager(device=device)
 
@@ -107,14 +118,29 @@ def run_test(args):
     sys.exit(0 if result.failed == 0 else 1)
 
 
+def _create_action_cache(cache_config):
+    """创建 ActionCache 实例"""
+    from cache import ActionCache, CacheStore, Embedder
+
+    store = CacheStore(cache_config.db_path)
+    embedder = Embedder()
+    return ActionCache(
+        embedder=embedder,
+        store=store,
+        similarity_threshold=cache_config.similarity_threshold,
+        region_similarity_threshold=cache_config.region_similarity_threshold,
+        ttl_days=cache_config.ttl_days,
+    )
+
+
 def generate_test(args):
     """模式 2：自然语言 → 生成 YAML 文件"""
     _setup_logging(args.verbose)
 
     from config.loader import load_global_config
-    from planner import plan_test_case, generate_yaml_content
+    from planner import plan_test_case, generate_yaml_content, append_to_yaml
 
-    _, _, _, planner_config = load_global_config()
+    _, _, _, planner_config, _ = load_global_config()
 
     print(f"\n规划中: {args.description}\n")
 
@@ -124,12 +150,20 @@ def generate_test(args):
         print(f"规划失败: {e}", file=sys.stderr)
         sys.exit(1)
 
-    yaml_content = generate_yaml_content(
-        test_case,
-        device_type=args.device_type,
-    )
-
-    if args.output:
+    if args.output and os.path.exists(args.output):
+        # 追加模式：向已有 YAML 文件追加新 task
+        append_to_yaml(args.output, test_case)
+        print(f"已追加到: {args.output}")
+        print(f"  新用例: {test_case.name}")
+        print(f"  步骤数: {len(test_case.steps)}")
+        print(f"\n可通过以下命令执行:")
+        print(f"  python main.py run {args.output}")
+    elif args.output:
+        # 新建模式
+        yaml_content = generate_yaml_content(
+            test_case,
+            device_type=args.device_type,
+        )
         with open(args.output, "w", encoding="utf-8") as f:
             f.write(yaml_content)
         print(f"已生成: {args.output}")
@@ -138,6 +172,10 @@ def generate_test(args):
         print(f"\n可通过以下命令执行:")
         print(f"  python main.py run {args.output}")
     else:
+        yaml_content = generate_yaml_content(
+            test_case,
+            device_type=args.device_type,
+        )
         print("--- 生成的 YAML ---\n")
         print(yaml_content)
 
@@ -160,7 +198,7 @@ def interactive_test(args):
     from suite import TestSuite
 
     # 使用全局配置（替代硬编码默认值）
-    device_config, model_config, vlm_config, planner_config = load_global_config()
+    device_config, model_config, vlm_config, planner_config, _ = load_global_config()
 
     # 创建设备实例（CLI 参数 > 全局配置）
     device_type_str = args.device_type or device_config.device_type

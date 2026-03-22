@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
 from device import Device
 from device.errors import ScreenshotSensitiveError
-from executor.actions import UnifiedAction
+from executor.actions import ActionType, UnifiedAction
 from executor.action_executor import ActionExecutor, ActionExecuteResult as _AER
 from executor.model_protocol import ActionModel
 
@@ -43,15 +44,19 @@ class TestExecutor:
         model: ActionModel,
         device: Device,
         max_steps_per_action: int = 10,
+        action_cache: ActionCache | None = None,
+        post_action_delay: float = 1.0,
     ):
         self.model = model
         self.device = device
         self.device_id = device.device_id
         self.action_executor = ActionExecutor(device)
         self.max_steps = max_steps_per_action
+        self.action_cache = action_cache
+        self.post_action_delay = post_action_delay  # 动作执行后等待页面加载的延迟（秒）
         self._context: list[dict[str, Any]] = []
 
-    def execute_action(self, description: str) -> ExecutorActionResult:
+    def execute_action(self, description: str, cache_key: str = "") -> ExecutorActionResult:
         """
         执行一个语义级操作步骤。
 
@@ -71,6 +76,40 @@ class TestExecutor:
         # 截图 + 构造消息
         screenshot = self.device.screenshot()
         current_app = self.device.current_app()
+
+        # ── 缓存快速路径 ──
+        if cache_key and self.action_cache:
+            activity = self.device.current_activity()
+            cached = self.action_cache.lookup(
+                cache_key, current_app, activity, screenshot,
+            )
+            if cached:
+                logger.info("缓存命中: %s (相似度 %.2f)", cache_key, cached.similarity)
+                params = cached.to_action_params()
+                # 归一化坐标 (0-999) → 绝对像素
+                sw, sh = screenshot.width, screenshot.height
+                abs_x = int(params["x"] / 999 * sw)
+                abs_y = int(params["y"] / 999 * sh)
+                abs_end_x = int(params["end_x"] / 999 * sw) if params.get("end_x") is not None else None
+                abs_end_y = int(params["end_y"] / 999 * sh) if params.get("end_y") is not None else None
+                cache_action = UnifiedAction(
+                    type=ActionType(params["action_type"].lower()),
+                    x=abs_x, y=abs_y,
+                    end_x=abs_end_x,
+                    end_y=abs_end_y,
+                )
+                cache_result = self.action_executor.execute(cache_action)
+                if cache_result.success:
+                    self.action_cache.record_hit(cached.entry)
+                    return ExecutorActionResult(
+                        success=True,
+                        actions_taken=[{"type": params["action_type"], "x": params["x"], "y": params["y"]}],
+                        rounds=0,
+                    )
+                logger.warning("缓存动作执行失败，fallback 到正常流程")
+            else:
+                logger.info("缓存未命中: %s (app=%s, activity=%s)", cache_key, current_app, activity)
+        initial_screenshot = screenshot  # 缓存写回用
         screen_info = self.model.build_screen_info(current_app)
 
         self._context.append(
@@ -111,26 +150,41 @@ class TestExecutor:
             # finish → 步骤完成
             if action.is_finish:
                 logger.info("步骤完成: %s (共 %d 轮)", description, round_num + 1)
-                return ExecutorActionResult(
+                exec_result = ExecutorActionResult(
                     success=True, actions_taken=actions_taken,
                     rounds=round_num + 1,
                 )
+                self._maybe_cache_action(
+                    cache_key, exec_result, actions_taken,
+                    current_app, initial_screenshot,
+                )
+                return exec_result
 
             # 执行动作
             result = self.action_executor.execute(action)
             actions_taken.append({
                 "type": action.type.value,
                 "x": action.x, "y": action.y,
+                "end_x": action.end_x, "end_y": action.end_y,
             })
 
             if result.should_finish:
-                return ExecutorActionResult(
+                exec_result = ExecutorActionResult(
                     success=result.success, actions_taken=actions_taken,
                     rounds=round_num + 1, error=result.message,
                 )
+                self._maybe_cache_action(
+                    cache_key, exec_result, actions_taken,
+                    current_app, initial_screenshot,
+                )
+                return exec_result
 
             # 上下文窗口管理（防止 token 溢出）
             self._trim_context()
+
+            # 等待页面加载后再截图
+            if self.post_action_delay > 0:
+                time.sleep(self.post_action_delay)
 
             # 下一轮截图
             try:
@@ -180,6 +234,52 @@ class TestExecutor:
         """重置上下文（切换 TestCase 时调用）"""
         self._context = []
         logger.debug("Executor 上下文已重置")
+
+    def _maybe_cache_action(
+        self,
+        cache_key: str,
+        result: ExecutorActionResult,
+        actions_taken: list[dict],
+        app: str,
+        screenshot,
+    ):
+        """成功且仅执行 1 个动作时写入缓存（多动作操作不缓存）"""
+        if not cache_key or not self.action_cache:
+            return
+        if not result.success or len(actions_taken) != 1:
+            return
+
+        first = actions_taken[0]
+
+        # 无坐标的动作（launch/back/home 等）不缓存
+        if first["x"] is None or first["y"] is None:
+            return
+
+        activity = self.device.current_activity()
+
+        # 绝对像素坐标 → 归一化坐标 (0-999)
+        sw, sh = screenshot.width, screenshot.height
+        x_norm = int(first["x"] / sw * 999) if sw else first["x"]
+        y_norm = int(first["y"] / sh * 999) if sh else first["y"]
+        end_x_norm = int(first["end_x"] / sw * 999) if first.get("end_x") and sw else first.get("end_x")
+        end_y_norm = int(first["end_y"] / sh * 999) if first.get("end_y") and sh else first.get("end_y")
+
+        try:
+            self.action_cache.store_action(
+                cache_key=cache_key,
+                app=app,
+                activity=activity,
+                action_type=first["type"],
+                x=x_norm,
+                y=y_norm,
+                end_x=end_x_norm,
+                end_y=end_y_norm,
+                screenshot=screenshot,
+            )
+            logger.info("已写入缓存: %s (action=%s, x=%d, y=%d, app=%s, activity=%s)",
+                        cache_key, first["type"], x_norm, y_norm, app, activity)
+        except Exception as e:
+            logger.warning("缓存写入失败: %s", e)
 
     def _trim_context(self):
         """

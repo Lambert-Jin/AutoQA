@@ -43,7 +43,7 @@ def parse_yaml(path: str) -> tuple[TestSuite, DeviceConfig, ActionModelConfig, V
         (TestSuite, DeviceConfig, ActionModelConfig, VLMConfig)
     """
     from config.loader import load_global_config
-    global_device, global_model, global_vlm, _ = load_global_config()
+    global_device, global_model, global_vlm, _, _ = load_global_config()
 
     with open(path, "r", encoding="utf-8") as f:
         raw = yaml.safe_load(f)
@@ -99,6 +99,7 @@ def _parse_test_case(raw: dict) -> TestCase:
             steps.append(ActionStep(
                 description=step_raw["action"],
                 timeout=step_raw.get("timeout", 30),
+                cache_key=step_raw.get("cache_key", ""),
             ))
         elif "assert" in step_raw:
             steps.append(AssertStep(

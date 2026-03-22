@@ -11,6 +11,7 @@ import yaml
 
 from config.settings import (
     ActionModelConfig,
+    CacheConfig,
     DeviceConfig,
     PlannerConfig,
     VLMConfig,
@@ -45,7 +46,7 @@ def _resolve_dict(data: dict) -> dict:
 
 def load_global_config(
     config_path: str | Path | None = None,
-) -> tuple[DeviceConfig, ActionModelConfig, VLMConfig, PlannerConfig]:
+) -> tuple[DeviceConfig, ActionModelConfig, VLMConfig, PlannerConfig, CacheConfig]:
     """
     加载全局配置文件。
 
@@ -53,13 +54,13 @@ def load_global_config(
     文件不存在时返回代码默认值。
 
     Returns:
-        (DeviceConfig, ActionModelConfig, VLMConfig, PlannerConfig)
+        (DeviceConfig, ActionModelConfig, VLMConfig, PlannerConfig, CacheConfig)
     """
     path = Path(config_path) if config_path else _CONFIG_PATH
 
     if not path.exists():
         logger.debug("全局配置文件不存在: %s，使用代码默认值", path)
-        return DeviceConfig(), ActionModelConfig(), VLMConfig(), PlannerConfig()
+        return DeviceConfig(), ActionModelConfig(), VLMConfig(), PlannerConfig(), CacheConfig()
 
     logger.info("加载全局配置: %s", path)
 
@@ -112,4 +113,14 @@ def load_global_config(
         max_tokens=pl.get("max_tokens", 2000),
     )
 
-    return device_config, action_model_config, vlm_config, planner_config
+    # cache
+    ca = config_raw.get("cache", {})
+    cache_config = CacheConfig(
+        enabled=ca.get("enabled", True),
+        similarity_threshold=ca.get("similarity_threshold", 0.85),
+        region_similarity_threshold=ca.get("region_similarity_threshold", 0.8),
+        ttl_days=ca.get("ttl_days", 30),
+        db_path=ca.get("db_path", ".cache/action_cache.db"),
+    )
+
+    return device_config, action_model_config, vlm_config, planner_config, cache_config

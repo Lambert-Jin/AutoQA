@@ -29,3 +29,8 @@ config:
     model: "gemini-2.5-flash"
     temperature: 0.3
     max_tokens: 2000
+
+  cache:
+    enabled: true
+    similarity_threshold: 0.85
+    ttl_days: 30

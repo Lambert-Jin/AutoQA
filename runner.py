@@ -86,7 +86,9 @@ class TestRunner:
 
         print(f"  Step {step_num}: [操作] {step.description} ... ", end="", flush=True)
 
-        result: ExecutorActionResult = self.executor.execute_action(step.description)
+        result: ExecutorActionResult = self.executor.execute_action(
+            step.description, cache_key=step.cache_key,
+        )
 
         timing.stop()
         duration = timing.duration_ms / 1000
